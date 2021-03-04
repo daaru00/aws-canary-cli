@@ -1,4 +1,4 @@
-# Why this project?
+## About this project
 
 Right now the only methods available to deploy AWS Canaries are: 
 - Using CloudFormation template and place the script code inline in a string inside a yml file...
