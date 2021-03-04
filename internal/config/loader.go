@@ -136,7 +136,8 @@ func LoadCanariesFromDir(ses *session.Session, searchPath *string, fileNameToMat
 
 		// Check if file match name
 		fileName := filepath.Base(filePath)
-		if fileName != *fileNameToMatch {
+		match, _ := filepath.Match(*fileNameToMatch, fileName)
+		if !match {
 			return nil
 		}
 

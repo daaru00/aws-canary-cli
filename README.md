@@ -82,6 +82,9 @@ name: test          # canary name
 memory: 1000        # minimum required memory, in MB
 timeout: 840        # maximum timeout (14 minutes), in seconds
 tracing: false      # enable active tracing
+code:
+  handler: index.handler
+  src: ./           # relative to config file
 env:                # canary environment variables
   ENDPOINT: "https://example.com"
   PAGE_LOAD_TIMEOUT: 15000
@@ -103,37 +106,14 @@ tags:                         # canary tags
   Environment: test
 ```
 
-### Search path
-
-Any command accept file or directory paths as arguments, any canary configuration file that match will be loaded an added to list.
-
-If a directory is provided the CLI will search recursively for files `canary.yml` (configurable via `--config-config-file`) 
-and try to parse them using YAML parser (configurable via `--config-config-parser`), for example:
-```bash
-aws-canary deploy examples/
-```
-
-If a file is provided the CLI will be try to parse using YAML parser (configurable via `--config-config-parser`), for example:
-```bash
-aws-canary deploy examples/nodejs/simple/canary.yml
-```
-
-Search path can be multiple, every argument respect the rules mentioned above:
-```bash
-aws-canary deploy examples/nodejs/simple/canary.yml examples/nodejs/web/canary.yml examples/python/simple/canary.yml
-# load 3 canaries from provided files
-
-aws-canary deploy examples/nodejs/ examples/python/simple/canary.yml
-# load all canaries in nodejs directory and a single one from python
-
-aws-canary deploy examples/nodejs/ examples/python/
-# load all canaries from nodejs and python directories (all)
-```
-
-Also a file glob pattern can be used as search paths:
-```bash
-aws-canary deploy examples/**/simple/canary.yml
-# load 2 canaries, one in nodejs directory and the other in the python one
+In configuration file it is possible to interpolate environment variables using `${var}` or `$var` syntax:
+```yaml
+name: test
+env:
+  ENDPOINT: "${ENDPOINT_FROM_ENV}"
+tags:
+  Project: "${APP_NAME}"
+  Environment: "${ENV}"
 ```
 
 ### Custom policy
@@ -228,14 +208,37 @@ Policies entries defined in policies are merged with the default provided by the
 It's the original AWS one with some additions: 
 - SSM parameters read-only access for paths that starts with `/cwsyn/`.
 
-In configuration file it is possible to interpolate environment variables using `${var}` or `$var` syntax:
-```yaml
-name: test
-env:
-  ENDPOINT: "${ENDPOINT_FROM_ENV}"
-tags:
-  Project: "${APP_NAME}"
-  Environment: "${ENV}"
+### Search path
+
+Any command accept file or directory paths as arguments, any canary configuration file that match will be loaded an added to list.
+
+If a directory is provided the CLI will search recursively for files `canary.yml` (configurable via `--config-config-file`) 
+and try to parse them using YAML parser (configurable via `--config-config-parser`), for example:
+```bash
+aws-canary deploy examples/
+```
+
+If a file is provided the CLI will be try to parse using YAML parser (configurable via `--config-config-parser`), for example:
+```bash
+aws-canary deploy examples/nodejs/simple/canary.yml
+```
+
+Search path can be multiple, every argument respect the rules mentioned above:
+```bash
+aws-canary deploy examples/nodejs/simple/canary.yml examples/nodejs/web/canary.yml examples/python/simple/canary.yml
+# load 3 canaries from provided files
+
+aws-canary deploy examples/nodejs/ examples/python/simple/canary.yml
+# load all canaries in nodejs directory and a single one from python
+
+aws-canary deploy examples/nodejs/ examples/python/
+# load all canaries from nodejs and python directories (all)
+```
+
+Also a file glob pattern can be used as search paths:
+```bash
+aws-canary deploy examples/**/simple/canary.yml
+# load 2 canaries, one in nodejs directory and the other in the python one
 ```
 
 Here an example of project configuration with single canary:
@@ -259,6 +262,34 @@ Here an example of project configuration with multiple canaries:
     └── login
         ├── canary.yml
         └── index.js
+```
+
+Configuration file name can be changed via `--config-file` parameter:
+```bash
+aws-canary deploy --config-file="test.yml" /tests/e2e/
+.
+└── tests
+    └── e2e
+        ├── cart
+        │   ├── test.yml
+        │   └── index.js
+        ├── home
+        │   ├── test.yml
+        │   └── index.js
+        └── login
+            ├── test.yml
+            └── index.js
+```
+both exact match and wildcard pattern can be used:
+```bash
+aws-canary deploy --config-file="*.yml" /tests/e2e/
+.
+└── tests
+    └── e2e
+        ├── cart.yml
+        ├── home.yml
+        ├── login.yml
+        └── index.js # export multiple handlers
 ```
 
 ## Build canaries code
