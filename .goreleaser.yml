@@ -1,0 +1,50 @@
+release:
+
+builds:
+- id: aws-canary
+  main: main.go
+  binary: aws-canary
+  goos:
+    - windows
+    - darwin
+    - linux
+  goarch:
+    - amd64
+  env:
+  - CGO_ENABLED=0
+
+archives:
+- builds:
+  - aws-canary
+  replacements:
+    darwin: Darwin
+    linux: Linux
+    windows: Windows
+    amd64: x86_64
+  format: tar.gz
+  format_overrides:
+    - goos: windows
+      format: zip
+
+checksum:
+  name_template: 'checksums.txt'
+
+changelog:
+  sort: asc
+  filters:
+    exclude:
+    - '^docs:'
+    - '^test:'
+    - '^examples:'
+
+nfpms:
+  - license: MIT
+    maintainer: Fabio Gollinucci
+    description: AWS Synthetics Canary CLI
+    homepage: https://github.com/daaru00/aws-canary-cli
+    suggests:
+      - nodejs
+      - python
+    formats:
+      - rpm
+      - deb

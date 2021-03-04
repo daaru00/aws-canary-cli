@@ -1,0 +1,20 @@
+name: "test-py-web"
+memory: 1000 # minimum required memory, in MB
+timeout: 840 # maximum timeout (14 minutes), in seconds
+tracing: false # enable active tracing
+runtime: syn-python-selenium-1.0
+env: 
+  ENDPOINT: "https://example.com/"
+code:
+  handler: script.handler
+retention:
+  failure: 31 # in days
+  success: 31 # in days
+schedule:
+  duration: 0 # run only once when it is started, or regular run period (in seconds)
+  expression: "rate(0 hour)" # run only manually, or rate(30 minutes)
+tags:
+  Project: "${PROJECT}"
+  Environment: "${ENVIRONMENT}"
+  Language: "Python"
+  Test: "Web"
