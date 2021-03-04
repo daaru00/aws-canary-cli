@@ -39,7 +39,7 @@ Unlock CLI executable file going to "System Preference > Security and Privacy > 
 
 Usage:
 ```bash
-./aws-canary [global options] command [command options] [arguments...]
+./aws-canary [global options] command [command options] [path...]
 ```
 
 - **deploy**: Deploy a Synthetics Canary
