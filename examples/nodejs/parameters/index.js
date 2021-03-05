@@ -7,7 +7,8 @@ const basicCustomEntryPoint = async function () {
   const ssm = new AWS.SSM()
   const params = {
     Path: '/cwsyn/',
-    Recursive: true
+    Recursive: true,
+    WithDecryption: true
   }
   const request = await ssm.getParametersByPath(params)
   try {

@@ -48,29 +48,32 @@ func Action(c *cli.Context) error {
 
 	// Setup wait group for async jobs
 	var waitGroup sync.WaitGroup
-	waitGroup.Add(len(*canaries))
 
 	// Setup deploy chan error
-	errs := make(chan error)
+	errs := make(chan error, len(*canaries))
 
 	// Loop over found canaries
 	for _, c := range *canaries {
 
 		// Execute parallel deploy
+		waitGroup.Add(1)
 		go func(c *canary.Canary) {
-			err := SingleCanary(c)
-			waitGroup.Done()
+			defer waitGroup.Done()
 
+			err := SingleCanary(c)
 			errs <- err
-			close(errs)
 		}(c)
 	}
 
 	// Wait until all remove ends
 	waitGroup.Wait()
 
-	// Check remove error
-	for err := range errs {
+	// Close errors channel
+	close(errs)
+
+	// Check errors
+	for i := 0; i < len(*canaries); i++ {
+		err := <-errs
 		if err != nil {
 			return err
 		}
@@ -94,7 +97,6 @@ func SingleCanary(canary *canary.Canary) error {
 
 	// Check if already stopped or never started
 	if *currentStatus.State == "STOPPED" || *currentStatus.State == "READY" || *currentStatus.State == "ERROR" {
-		fmt.Println(fmt.Sprintf("[%s] Stop Skipped: not in a stoppable state %s", canary.Name, *currentStatus.State))
 		return nil
 	}
 

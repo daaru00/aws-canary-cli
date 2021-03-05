@@ -28,11 +28,10 @@ type Schedule struct {
 	Expression        string `yaml:"expression" json:"expression"`
 }
 
-// VPCConfig configuration
-type VPCConfig struct {
-	SecurityGroupIds []string `yaml:"securityGroupIds" json:"securityGroupIds"`
-	SubnetIDs        []string `yaml:"subnetIds" json:"subnetIds"`
-	VpcID            string   `yaml:"id" json:"id"`
+// VpcConfig configuration
+type VpcConfig struct {
+	SecurityGroupIds []string `yaml:"securityGroups" json:"securityGroups"`
+	SubnetIDs        []string `yaml:"subnets" json:"subnets"`
 }
 
 // RetentionConfig configuration
@@ -56,7 +55,7 @@ type Canary struct {
 	MemoryInMB           int64                `yaml:"memory" json:"memory"`
 	TimeoutInSeconds     int64                `yaml:"timeout" json:"timeout"`
 	Schedule             Schedule             `yaml:"schedule" json:"schedule"`
-	VPCConfig            VPCConfig            `yaml:"vpc" json:"vpc"`
+	VpcConfig            VpcConfig            `yaml:"vpc" json:"vpc"`
 	RoleName             string               `yaml:"role" json:"role"`
 	PolicyStatements     []iam.StatementEntry `yaml:"policies" json:"policies"`
 }
@@ -124,10 +123,50 @@ func (c *Canary) IsDeployed() bool {
 func (c *Canary) Deploy(role *iam.Role, artifactBucketLocation *string) error {
 	var err error
 
-	// Load archive path
-	data, err := c.Code.ReadArchive()
-	if err != nil {
-		return err
+	// Elaborate code config
+	var codeInputConfig *synthetics.CanaryCodeInput
+	if len(c.Code.archives3bucket) != 0 && len(c.Code.archives3key) != 0 {
+		// Set S3 path for code
+		codeInputConfig = &synthetics.CanaryCodeInput{
+			Handler:  &c.Code.Handler,
+			S3Bucket: &c.Code.archives3bucket,
+			S3Key:    &c.Code.archives3key,
+		}
+	} else {
+		// Load archive path
+		data, err := c.Code.ReadArchive()
+		if err != nil {
+			return err
+		}
+
+		// Set zip file code
+		codeInputConfig = &synthetics.CanaryCodeInput{
+			Handler: &c.Code.Handler,
+			ZipFile: data,
+		}
+	}
+
+	// Elaborate run config
+	runConfig := &synthetics.CanaryRunConfigInput{
+		ActiveTracing:        &c.ActiveTracing,
+		EnvironmentVariables: aws.StringMap(c.EnvironmentVariables),
+		MemoryInMB:           &c.MemoryInMB,
+		TimeoutInSeconds:     &c.TimeoutInSeconds,
+	}
+
+	// Elaborate schedule config
+	scheduleConfig := &synthetics.CanaryScheduleInput{
+		DurationInSeconds: &c.Schedule.DurationInSeconds,
+		Expression:        &c.Schedule.Expression,
+	}
+
+	// Elaborate VPC configs
+	var vpcConfig *synthetics.VpcConfigInput
+	if c.HasVpcConfig() {
+		vpcConfig = &synthetics.VpcConfigInput{
+			SecurityGroupIds: aws.StringSlice(c.VpcConfig.SecurityGroupIds),
+			SubnetIds:        aws.StringSlice(c.VpcConfig.SubnetIDs),
+		}
 	}
 
 	// Check if Canary is already deployed
@@ -138,35 +177,19 @@ func (c *Canary) Deploy(role *iam.Role, artifactBucketLocation *string) error {
 			ExecutionRoleArn:             role.Arn,
 			FailureRetentionPeriodInDays: &c.Retention.FailureRetentionPeriod,
 			SuccessRetentionPeriodInDays: &c.Retention.SuccessRetentionPeriod,
-			RunConfig: &synthetics.CanaryRunConfigInput{
-				ActiveTracing:        &c.ActiveTracing,
-				EnvironmentVariables: aws.StringMap(c.EnvironmentVariables),
-				MemoryInMB:           &c.MemoryInMB,
-				TimeoutInSeconds:     &c.TimeoutInSeconds,
-			},
-			RuntimeVersion: &c.RuntimeVersion,
-			Schedule: &synthetics.CanaryScheduleInput{
-				DurationInSeconds: &c.Schedule.DurationInSeconds,
-				Expression:        &c.Schedule.Expression,
-			},
-			Code: &synthetics.CanaryCodeInput{
-				Handler: &c.Code.Handler,
-				// S3Bucket: &c.Code.archives3bucket,
-				// S3Key:    &c.Code.archives3key,
-				ZipFile: data,
-			},
-			Tags: aws.StringMap(c.Tags),
+			RunConfig:                    runConfig,
+			RuntimeVersion:               &c.RuntimeVersion,
+			Schedule:                     scheduleConfig,
+			Code:                         codeInputConfig,
+			Tags:                         aws.StringMap(c.Tags),
 		}
 
 		// Setup VPc config only if set
-		if len(c.VPCConfig.SecurityGroupIds) > 0 {
-			input.VpcConfig = &synthetics.VpcConfigInput{
-				SecurityGroupIds: aws.StringSlice(c.VPCConfig.SecurityGroupIds),
-				SubnetIds:        aws.StringSlice(c.VPCConfig.SubnetIDs),
-			}
+		if vpcConfig != nil {
+			input.SetVpcConfig(vpcConfig)
 		}
 
-		// Update canary
+		// Create canary
 		_, err = c.clients.synthetics.CreateCanary(input)
 	} else {
 		input := &synthetics.UpdateCanaryInput{
@@ -174,31 +197,15 @@ func (c *Canary) Deploy(role *iam.Role, artifactBucketLocation *string) error {
 			ExecutionRoleArn:             role.Arn,
 			FailureRetentionPeriodInDays: &c.Retention.FailureRetentionPeriod,
 			SuccessRetentionPeriodInDays: &c.Retention.SuccessRetentionPeriod,
-			RunConfig: &synthetics.CanaryRunConfigInput{
-				ActiveTracing:        &c.ActiveTracing,
-				EnvironmentVariables: aws.StringMap(c.EnvironmentVariables),
-				MemoryInMB:           &c.MemoryInMB,
-				TimeoutInSeconds:     &c.TimeoutInSeconds,
-			},
-			RuntimeVersion: &c.RuntimeVersion,
-			Schedule: &synthetics.CanaryScheduleInput{
-				DurationInSeconds: &c.Schedule.DurationInSeconds,
-				Expression:        &c.Schedule.Expression,
-			},
-			Code: &synthetics.CanaryCodeInput{
-				Handler: &c.Code.Handler,
-				// S3Bucket: &c.Code.archives3bucket,
-				// S3Key:    &c.Code.archives3key,
-				ZipFile: data,
-			},
+			RunConfig:                    runConfig,
+			RuntimeVersion:               &c.RuntimeVersion,
+			Schedule:                     scheduleConfig,
+			Code:                         codeInputConfig,
 		}
 
 		// Setup VPc config only if set
-		if len(c.VPCConfig.SecurityGroupIds) > 0 {
-			input.VpcConfig = &synthetics.VpcConfigInput{
-				SecurityGroupIds: aws.StringSlice(c.VPCConfig.SecurityGroupIds),
-				SubnetIds:        aws.StringSlice(c.VPCConfig.SubnetIDs),
-			}
+		if vpcConfig != nil {
+			input.SetVpcConfig(vpcConfig)
 		}
 
 		// Update canary
@@ -323,14 +330,11 @@ func (c *Canary) Remove() error {
 		return err
 	}
 
-	// Delete related layer
+	// Delete related layer (ignore error if not exist)
 	layerName := fmt.Sprintf("cwsyn-%s-%s", c.Name, *canaryGet.Canary.Id)
-	layerList, err := c.clients.lambda.ListLayerVersions(&lambda.ListLayerVersionsInput{
+	layerList, _ := c.clients.lambda.ListLayerVersions(&lambda.ListLayerVersionsInput{
 		LayerName: &layerName,
 	})
-	if err != nil {
-		return err
-	}
 
 	// Delete all layer's versions
 	for _, version := range layerList.LayerVersions {
@@ -343,13 +347,10 @@ func (c *Canary) Remove() error {
 		}
 	}
 
-	// Delete related function
-	_, err = c.clients.lambda.DeleteFunction(&lambda.DeleteFunctionInput{
+	// Delete related function (ignore error if not exist)
+	c.clients.lambda.DeleteFunction(&lambda.DeleteFunctionInput{
 		FunctionName: &layerName,
 	})
-	if err != nil {
-		return err
-	}
 
 	return nil
 }
@@ -362,4 +363,9 @@ func (c *Canary) IsNodeRuntime() bool {
 // IsPythonRuntime check if is python runtime
 func (c *Canary) IsPythonRuntime() bool {
 	return strings.Contains(c.RuntimeVersion, "python")
+}
+
+// HasVpcConfig check if is VPC access is configured
+func (c *Canary) HasVpcConfig() bool {
+	return len(c.VpcConfig.SubnetIDs) > 0
 }

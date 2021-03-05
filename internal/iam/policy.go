@@ -185,6 +185,24 @@ func (p *Policy) AddSSMParamersPermission(region *string, accountID *string) {
 	}, p.statements...)
 }
 
+// AddVPCPermissions add permission for VPC
+func (p *Policy) AddVPCPermissions() {
+	p.statements = append([]StatementEntry{
+		{
+			Effect: "Allow",
+			Action: []string{
+				"ec2:CreateNetworkInterface",
+				"ec2:DescribeNetworkInterface",
+				"ec2:DescribeNetworkInterfaces",
+				"ec2:DeleteNetworkInterface",
+			},
+			Resource: []string{
+				"*",
+			},
+		},
+	}, p.statements...)
+}
+
 // Render IAM Policy
 func (p *Policy) Render() (*string, error) {
 	str := "{}"

@@ -6,6 +6,7 @@ import (
 	"os"
 	"path"
 	"path/filepath"
+	"strings"
 	"time"
 
 	"github.com/aws/aws-sdk-go/aws/session"
@@ -46,6 +47,11 @@ func LoadCanaries(c *cli.Context, ses *session.Session) (*[]*canary.Canary, erro
 	searchPaths := []string{"."}
 	if c.Args().Len() > 0 {
 		searchPaths = c.Args().Slice()
+	} else {
+		envVar := os.Getenv("CANARY_PATH")
+		if len(envVar) > 0 {
+			searchPaths = []string{envVar}
+		}
 	}
 
 	// Iterate over search paths provided
@@ -110,8 +116,19 @@ func LoadCanaryFromFile(ses *session.Session, filePath *string, parser *string) 
 	if len(canary.Code.Src) == 0 {
 		canary.Code.Src = filepath.Dir(*filePath)
 	} else {
-		canary.Code.Src = path.Join(canary.Code.Src, filepath.Dir(*filePath))
+		if strings.HasPrefix(canary.Code.Src, "/") == false {
+			canary.Code.Src = path.Join(filepath.Dir(*filePath), canary.Code.Src)
+		}
 	}
+
+	// Add default excluded paths
+	canary.Code.Exclude = append(canary.Code.Exclude, []string{
+		".git/**",
+		".gitignore",
+		".DS_Store",
+		"npm-debug.log",
+		path.Join("./", fileName),
+	}...)
 
 	return canary, nil
 }

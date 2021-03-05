@@ -13,6 +13,7 @@ import (
 	"strings"
 
 	"github.com/aws/aws-sdk-go/service/s3/s3manager"
+	"github.com/daaru00/aws-canary-cli/internal/bucket"
 )
 
 // Code structure
@@ -23,8 +24,9 @@ type Code struct {
 	archives3key    string
 	clients         *clients
 
-	Src     string `yaml:"src" json:"src"`
-	Handler string `yaml:"handler" json:"handler"`
+	Src     string   `yaml:"src" json:"src"`
+	Handler string   `yaml:"handler" json:"handler"`
+	Exclude []string `yaml:"exclude" json:"exclude"`
 }
 
 // CreateArchive create a ZIP archive from code path
@@ -51,12 +53,23 @@ func (c *Code) CreateArchive(name *string, pathprefix *string) error {
 			return nil
 		}
 
-		// Elaborate destination path
-		destPath := filePath
-		if len(c.Src) != 0 && c.Src != "." && c.Src != "./" {
-			destPath = strings.TrimPrefix(destPath, c.Src)
+		// Check exclude
+		baseSrc := c.Src
+		if strings.HasSuffix(baseSrc, "/") == false {
+			baseSrc = baseSrc + "/"
 		}
-		destPath = path.Join(*pathprefix, destPath)
+		baseSrc = strings.TrimPrefix(filePath, baseSrc)
+
+		// Check exclude
+		for _, exclude := range c.Exclude {
+			match, _ := filepath.Match(exclude, baseSrc)
+			if match {
+				return nil
+			}
+		}
+
+		// Elaborate destination path
+		destPath := path.Join(*pathprefix, baseSrc)
 
 		// Add file to ZIP archive
 		zipFile, err := codeZip.Create(destPath)
@@ -82,6 +95,7 @@ func (c *Code) CreateArchive(name *string, pathprefix *string) error {
 	if err != nil {
 		return err
 	}
+
 	return nil
 }
 
@@ -96,7 +110,7 @@ func (c *Code) DeleteArchive() error {
 }
 
 // Upload will upload archive to S3
-func (c *Code) Upload(bucket *string) error {
+func (c *Code) Upload(bucket *bucket.Bucket, prefix *string) error {
 	// Open archive file
 	file, err := os.Open(c.archivepath)
 	if err != nil {
@@ -105,8 +119,8 @@ func (c *Code) Upload(bucket *string) error {
 	defer file.Close()
 
 	// Set archive s3 location
-	c.archives3bucket = *bucket
-	c.archives3key = c.archivename
+	c.archives3bucket = *bucket.Name
+	c.archives3key = path.Join(*prefix, c.archivename)
 
 	// Upload archive
 	_, err = c.clients.s3uploader.Upload(&s3manager.UploadInput{

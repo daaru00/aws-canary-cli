@@ -57,7 +57,7 @@ func (r *Role) IsDeployed() bool {
 	return err == nil
 }
 
-// SetInlinePolicy Set inline policy
+// SetInlinePolicy set an inline policy
 func (r *Role) SetInlinePolicy(policy *Policy) error {
 	r.InlinePolicy = policy
 	return nil
@@ -65,6 +65,7 @@ func (r *Role) SetInlinePolicy(policy *Policy) error {
 
 // Deploy IAM role
 func (r *Role) Deploy() error {
+	var needWait bool
 
 	// Check if not deployed
 	if r.IsDeployed() == false {
@@ -98,8 +99,8 @@ func (r *Role) Deploy() error {
 			return err
 		}
 
-		// Do a dummy sleep to avoid IAM role not recognized as valida Lambda role
-		time.Sleep(10 * 1000 * time.Millisecond)
+		// Set a dummy sleep to avoid IAM role not recognized as valid Lambda role
+		needWait = true
 	}
 
 	// Check for inline policy
@@ -119,6 +120,11 @@ func (r *Role) Deploy() error {
 		if err != nil {
 			return err
 		}
+	}
+
+	// Do a dummy sleep to avoid IAM role not recognized as valida Lambda role.
+	if needWait {
+		time.Sleep(6 * 1000 * time.Millisecond) // Yes, 6 is a magic number.
 	}
 
 	return nil

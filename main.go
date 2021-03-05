@@ -44,14 +44,14 @@ func main() {
 			Aliases: []string{"cf"},
 			Usage:   "Config file name",
 			Value:   "canary.yml",
-			EnvVars: []string{"CONFIG_FILE"},
+			EnvVars: []string{"CANARY_CONFIG_FILE"},
 		},
 		&cli.StringFlag{
 			Name:    "config-parser",
 			Aliases: []string{"cp"},
 			Usage:   "Config file parser, valid values are \"yml\" or \"json\"",
 			Value:   "yml",
-			EnvVars: []string{"CONFIG_PARSER"},
+			EnvVars: []string{"CANARY_CONFIG_PARSER"},
 		},
 	}
 

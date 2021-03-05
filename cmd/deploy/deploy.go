@@ -22,18 +22,34 @@ import (
 // NewCommand - Return deploy commands
 func NewCommand(globalFlags []cli.Flag) *cli.Command {
 	return &cli.Command{
-		Name:  "deploy",
-		Usage: "Deploy a Synthetics Canary",
+		Name:    "deploy",
+		Aliases: []string{"up"},
+		Usage:   "Deploy a Synthetics Canary",
 		Flags: append(globalFlags, []cli.Flag{
 			&cli.StringFlag{
 				Name:    "artifact-bucket",
-				Usage:   "Then Artifact bucket name",
+				Usage:   "Then artifact bucket name",
 				EnvVars: []string{"CANARY_ARTIFACT_BUCKET", "CANARY_ARTIFACT_BUCKET_NAME"},
+			},
+			&cli.StringFlag{
+				Name:    "source-bucket",
+				Usage:   "Then source code bucket name",
+				EnvVars: []string{"CANARY_SOURCE_BUCKET", "CANARY_SOURCE_BUCKET_NAME"},
 			},
 			&cli.BoolFlag{
 				Name:    "yes",
 				Aliases: []string{"y"},
 				Usage:   "Answer yes for all confirmations",
+			},
+			&cli.BoolFlag{
+				Name:    "build",
+				Aliases: []string{"b"},
+				Usage:   "Build canary before deploy",
+			},
+			&cli.BoolFlag{
+				Name:    "upload",
+				Aliases: []string{"u"},
+				Usage:   "Upload code to source bucket",
 			},
 			&cli.BoolFlag{
 				Name:    "start",
@@ -80,39 +96,64 @@ func Action(c *cli.Context) error {
 	if len(artifactBucketName) == 0 {
 		artifactBucketName = fmt.Sprintf("cw-syn-results-%s-%s", *accountID, *region)
 	}
-	artifactBucket, err := deployArtifactBucket(ses, &artifactBucketName)
+	artifactBucket, err := deployBucket(ses, &artifactBucketName)
 	if err != nil {
 		return err
 	}
 
+	// Deploy source bucket
+	var sourceBucket *bucket.Bucket
+	if c.Bool("upload") {
+		sourceBucketName := c.String("source-bucket")
+		if len(sourceBucketName) == 0 {
+			sourceBucketName = fmt.Sprintf("cw-syn-sources-%s-%s", *accountID, *region)
+		}
+		sourceBucket, err = deployBucket(ses, &sourceBucketName)
+		if err != nil {
+			return err
+		}
+	}
+
 	// Setup wait group for async jobs
 	var waitGroup sync.WaitGroup
-	waitGroup.Add(len(*canaries))
 
-	// Setup deploy chan error
-	errs := make(chan error)
+	// Setup errors channel
+	errs := make(chan error, len(*canaries))
 
 	// Loop over found canaries
 	for _, cy := range *canaries {
 
 		// Execute parallel deploy
+		waitGroup.Add(1)
 		go func(canary *canary.Canary) {
-			err := deploySingleCanary(ses, region, accountID, canary, artifactBucket)
+			var err error
+			defer waitGroup.Done()
+
+			if err == nil && c.Bool("build") {
+				_, err = build.SingleCanary(ses, canary)
+			}
+
+			if err == nil {
+				err = deploySingleCanary(ses, region, accountID, canary, artifactBucket, sourceBucket)
+			}
+
 			if err == nil && c.Bool("start") {
 				err = start.SingleCanary(canary)
 			}
-			waitGroup.Done()
 
 			errs <- err
-			close(errs)
 		}(cy)
 	}
 
 	// Wait until all remove ends
 	waitGroup.Wait()
 
-	// Check remove error
-	for err := range errs {
+	// Close errors channel
+	close(errs)
+
+	// Check errors
+	for i := 0; i < len(*canaries); i++ {
+		err := <-errs
 		if err != nil {
 			return err
 		}
@@ -121,33 +162,33 @@ func Action(c *cli.Context) error {
 	return nil
 }
 
-func deployArtifactBucket(ses *session.Session, artifactBucketName *string) (*bucket.Bucket, error) {
-	fmt.Println(fmt.Sprintf("Checking artifact bucket.."))
+func deployBucket(ses *session.Session, bucketName *string) (*bucket.Bucket, error) {
+	fmt.Println(fmt.Sprintf("Checking bucket %s..", *bucketName))
 
 	// Check artifact bucket
-	artifactBucket := bucket.New(ses, artifactBucketName)
-	if artifactBucket.IsDeployed() == false {
+	bucket := bucket.New(ses, bucketName)
+	if bucket.IsDeployed() == false {
 		// Ask for deploy
 		confirm := false
 		prompt := &survey.Confirm{
-			Message: fmt.Sprintf("Artifact bucket %s not found, do you want to deploy it now?", *artifactBucketName),
+			Message: fmt.Sprintf("Bucket %s not found, do you want to deploy it now?", *bucketName),
 		}
 		survey.AskOne(prompt, &confirm)
 
 		// Check respose
 		if confirm == false {
-			return nil, fmt.Errorf("Artifact bucket %s not found", *artifactBucketName)
+			return nil, fmt.Errorf("Bucket %s not found", *bucketName)
 		}
 
 		// Deploy artifact bucket
-		fmt.Println(fmt.Sprintf("Deploying artifact bucket %s..", *artifactBucketName))
-		err := artifactBucket.Deploy()
+		fmt.Println(fmt.Sprintf("Deploying bucket %s..", *bucketName))
+		err := bucket.Deploy()
 		if err != nil {
-			return artifactBucket, err
+			return bucket, err
 		}
 	}
 
-	return artifactBucket, nil
+	return bucket, nil
 }
 
 func deployIamRole(ses *session.Session, roleName *string, policy *iam.Policy) (*iam.Role, error) {
@@ -172,6 +213,7 @@ func buildIamPolicy(ses *session.Session, policyName *string, artifactBucket *bu
 	policy.AddMetricsPermission()
 	policy.AddSSMParamersPermission(region, accountID)
 	policy.AddXRayPermission()
+	policy.AddVPCPermissions()
 
 	// Add custom policy statements
 	for _, statement := range *policyStatements {
@@ -182,7 +224,7 @@ func buildIamPolicy(ses *session.Session, policyName *string, artifactBucket *bu
 	return policy, nil
 }
 
-func deploySingleCanary(ses *session.Session, region *string, accountID *string, canary *canary.Canary, artifactBucket *bucket.Bucket) error {
+func deploySingleCanary(ses *session.Session, region *string, accountID *string, canary *canary.Canary, artifactBucket *bucket.Bucket, sourceBucket *bucket.Bucket) error {
 	var err error
 	var role *iam.Role
 
@@ -216,12 +258,6 @@ func deploySingleCanary(ses *session.Session, region *string, accountID *string,
 		codePathPrefix = "nodejs/node_modules"
 	}
 
-	// Install code dependencies
-	_, err = build.SingleCanary(ses, canary)
-	if err != nil {
-		return err
-	}
-
 	// Prepare canary code
 	fmt.Println(fmt.Sprintf("[%s] Preparing code..", canary.Name))
 	err = canary.Code.CreateArchive(&canary.Name, &codePathPrefix)
@@ -232,12 +268,14 @@ func deploySingleCanary(ses *session.Session, region *string, accountID *string,
 	// Clean archive at the end of deploy
 	defer cleanTemporaryResources(canary)
 
-	// // Upload canary code
-	// fmt.Println(fmt.Sprintf("[%s] Upload code..", canary.Name))
-	// err = canary.Code.Upload(artifactBucket.Name)
-	// if err != nil {
-	// 	return err
-	// }
+	// Upload canary code
+	if sourceBucket != nil {
+		fmt.Println(fmt.Sprintf("[%s] Uploading code..", canary.Name))
+		err = canary.Code.Upload(sourceBucket, region)
+		if err != nil {
+			return err
+		}
+	}
 
 	// Deploy canary
 	fmt.Println(fmt.Sprintf("[%s] Deploying..", canary.Name))

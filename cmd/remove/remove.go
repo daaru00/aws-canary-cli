@@ -20,7 +20,7 @@ import (
 func NewCommand(globalFlags []cli.Flag) *cli.Command {
 	return &cli.Command{
 		Name:    "remove",
-		Aliases: []string{"delete"},
+		Aliases: []string{"delete", "down"},
 		Usage:   "Remove a Synthetics Canary",
 		Flags: append(globalFlags, []cli.Flag{
 			&cli.StringFlag{
@@ -29,9 +29,17 @@ func NewCommand(globalFlags []cli.Flag) *cli.Command {
 				EnvVars: []string{"CANARY_ARTIFACT_BUCKET", "CANARY_ARTIFACT_BUCKET_NAME"},
 			},
 			&cli.BoolFlag{
-				Name:    "bucket",
-				Aliases: []string{"b"},
-				Usage:   "Remove also artifact bucket",
+				Name:  "delete-artifact-bucket",
+				Usage: "Remove also artifact bucket",
+			},
+			&cli.StringFlag{
+				Name:    "source-bucket",
+				Usage:   "Then source code bucket name",
+				EnvVars: []string{"CANARY_SOURCE_BUCKET", "CANARY_SOURCE_BUCKET_NAME"},
+			},
+			&cli.BoolFlag{
+				Name:  "delete-source-bucket",
+				Usage: "Remove also source bucket",
 			},
 			&cli.BoolFlag{
 				Name:    "yes",
@@ -83,12 +91,24 @@ func Action(c *cli.Context) error {
 	}
 
 	// Remove artifact bucket
-	if c.Bool("bucket") {
+	if c.Bool("delete-artifact-bucket") {
 		artifactBucketName := c.String("artifact-bucket")
 		if len(artifactBucketName) == 0 {
 			artifactBucketName = fmt.Sprintf("canary-artifact-%s-%s", *accountID, *region)
 		}
-		err = removeArtifactBucket(ses, &artifactBucketName)
+		err = removeBucket(ses, &artifactBucketName)
+		if err != nil {
+			return err
+		}
+	}
+
+	// Remove source bucket
+	if c.Bool("delete-source-bucket") {
+		sourceBucketName := c.String("source-bucket")
+		if len(sourceBucketName) == 0 {
+			sourceBucketName = fmt.Sprintf("cw-syn-sources-%s-%s", *accountID, *region)
+		}
+		err = removeBucket(ses, &sourceBucketName)
 		if err != nil {
 			return err
 		}
@@ -96,16 +116,17 @@ func Action(c *cli.Context) error {
 
 	// Setup wait group for async jobs
 	var waitGroup sync.WaitGroup
-	waitGroup.Add(len(*canaries))
 
 	// Setup deploy chan error
-	errs := make(chan error)
+	errs := make(chan error, len(*canaries))
 
 	// Loop over found canaries
 	for _, cy := range *canaries {
 
 		// Execute parallel deploy
+		waitGroup.Add(1)
 		go func(canary *canary.Canary) {
+			defer waitGroup.Done()
 			var err error
 
 			if canary.IsDeployed() {
@@ -116,18 +137,19 @@ func Action(c *cli.Context) error {
 				err = removeSingleCanary(ses, canary, region)
 			}
 
-			waitGroup.Done()
-
 			errs <- err
-			close(errs)
 		}(cy)
 	}
 
 	// Wait until all remove ends
 	waitGroup.Wait()
 
-	// Check remove error
-	for err := range errs {
+	// Close errors channel
+	close(errs)
+
+	// Check errors
+	for i := 0; i < len(*canaries); i++ {
+		err := <-errs
 		if err != nil {
 			return err
 		}
@@ -136,19 +158,19 @@ func Action(c *cli.Context) error {
 	return nil
 }
 
-func removeArtifactBucket(ses *session.Session, artifactBucketName *string) error {
-	artifactBucket := bucket.New(ses, artifactBucketName)
+func removeBucket(ses *session.Session, bucketName *string) error {
+	bucket := bucket.New(ses, bucketName)
 
 	// Empty bucket
-	fmt.Println(fmt.Sprintf("Empty artifact bucket.."))
-	err := artifactBucket.Empty()
+	fmt.Println(fmt.Sprintf("Empty bucket %s..", *bucketName))
+	err := bucket.Empty()
 	if err != nil {
 		return err
 	}
 
 	// Remove artifact bucket
-	fmt.Println(fmt.Sprintf("Removing artifact bucket.."))
-	err = artifactBucket.Remove()
+	fmt.Println(fmt.Sprintf("Removing bucket %s..", *bucketName))
+	err = bucket.Remove()
 	if err != nil {
 		return err
 	}

@@ -78,26 +78,16 @@ aws-canary deploy # will load .env.STAGE file
 
 This CLI will search for `canary.yml` configurations files, recursively, in search path (provided via first argument of any commands) for configurations file and deploy/remove canaries in parallels. The canary configuration file looks like this:
 ```yaml
-name: test          # canary name
-memory: 1000        # minimum required memory, in MB
-timeout: 840        # maximum timeout (14 minutes), in seconds
-tracing: false      # enable active tracing
-code:
-  handler: index.handler
-  src: ./           # relative to config file
-env:                # canary environment variables
+name: test         # canary name
+memory: 1000       # minimum required memory, in MB
+timeout: 840       # maximum timeout (14 minutes), in seconds
+tracing: false     # enable active tracing
+env:                      # canary environment variables
   ENDPOINT: "https://example.com"
   PAGE_LOAD_TIMEOUT: 15000
-role: my-role-name  # use an existing, custom IAM role
-policies:           # policies statement to attach to IAM role. If the role property is set, this property is ignored. 
-  - Effect: "Allow"
-    Action: 
-      - "dynamodb:ListTables"
-    Resource: 
-      - "*"
 retention:
-  failure: 31 # retention for failure results, in days
-  success: 31 # retention for success results, in days
+  failure: 31              # retention for failure results, in days
+  success: 31              # retention for success results, in days
 schedule:
   duration: 0                 # run only once when it starts, or regular run in period (in seconds)
   expression: "rate(0 hour)"  # run only manually with 0 value or rate(30 minutes)
@@ -105,6 +95,24 @@ tags:                         # canary tags
   Project: test
   Environment: test
 ```
+
+### Code
+
+Code path and handler can be changed from defaults:
+```yaml
+name: test
+code:
+  handler: index.handler  # this value must end with the string ".handler"
+  src: ./                 # relative to config file
+  exclude:                # path excluded from zip archive
+    - ".git/**"
+		- ".gitignore"
+		- ".DS_Store"
+		- "npm-debug.log"
+		- "canary.yml"
+```
+
+### Interpolation
 
 In configuration file it is possible to interpolate environment variables using `${var}` or `$var` syntax:
 ```yaml
@@ -116,7 +124,39 @@ tags:
   Environment: "${ENV}"
 ```
 
+### VPC
+
+Optionally Canary can run in a VPC:
+```yaml
+name: test
+env:
+  ENDPOINT: "${ENDPOINT_FROM_ENV}"
+vpc:
+  subnets:
+    - subnet-xxxxxxx # VPC subnets ids (at least one)
+    - subnet-xxxxxxx
+    - subnet-xxxxxxx
+  securityGroups:
+    - sg-xxxxxxxxx   # VPC security group ids
+```
+
 ### Custom policy
+
+Canary can have a custom role attached to it:
+```yaml
+name: test
+role: my-role-name  # use an existing, custom IAM role
+```
+otherwise, custom policy statement can be directly attached to the role:
+```yaml
+name: test
+policies:           # policies statement to attach to IAM role. If the role property is set, this property is ignored. 
+  - Effect: "Allow"
+    Action: 
+      - "dynamodb:ListTables"
+    Resource: 
+      - "*"
+```
 
 Custom policy statement must respect a strict format:
 ```
@@ -201,12 +241,25 @@ Policies entries defined in policies are merged with the default provided by the
       "Resource": [
         "*"
       ]
+    },
+    {
+      "Effect": "Allow",
+      "Action": [
+        "ec2:CreateNetworkInterface",
+				"ec2:DescribeNetworkInterface",
+				"ec2:DescribeNetworkInterfaces",
+				"ec2:DeleteNetworkInterface"
+      ],
+      "Resource": [
+        "*"
+      ]
     }
   ]
 }
 ```
 It's the original AWS one with some additions: 
 - SSM parameters read-only access for paths that starts with `/cwsyn/`.
+- EC2 network interface CRUD access in order to be able to use Canary in a VPC.
 
 ### Search path
 
@@ -215,7 +268,13 @@ Any command accept file or directory paths as arguments, any canary configuratio
 If a directory is provided the CLI will search recursively for files `canary.yml` (configurable via `--config-config-file`) 
 and try to parse them using YAML parser (configurable via `--config-config-parser`), for example:
 ```bash
-aws-canary deploy examples/
+aws-canary deploy ./examples
+```
+
+Search path and config file name can be set via environment variable (or `.env` file):
+```
+CANARY_PATH=./tests/e2e/
+CANARY_CONFIG_FILE=*.yml
 ```
 
 If a file is provided the CLI will be try to parse using YAML parser (configurable via `--config-config-parser`), for example:
@@ -321,9 +380,30 @@ To deploy canaries run the `deploy` command:
 aws-canary deploy
 ```
 
-Adding `--yes` flag the deploy process wil automatically create artifact bucket required for canary execution:
+Artifact bucket name can be customized using `--artifact-bucket` parameter:
+```bash
+aws-canary deploy --artifact-bucket my-bucket-bucket-name
+```
+
+Adding `--yes` flag the deploy process wil automatically create artifact and source bucket (if needed) required for canary execution:
 ```bash
 aws-canary deploy --artifact-bucket my-bucket-bucket-name --yes
+```
+
+If the artifact size exceed the maximum that Lambda allow (512 KB), an error wil be returned:
+```
+AWSLambdaException: 
+        status code: 500, request id: xxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxx
+exit status 1
+```
+using `--upload` flag the zip code will be uploaded to the source bucket instead of directly passing it during canary creation/update:
+```
+aws-canary deploy --upload
+```
+
+Source bucket name can be customized using `--source-bucket` parameter:
+```bash
+aws-canary deploy --source-bucket my-source-bucket-name --upload
 ```
 
 ## Start canaries (manually execution)
@@ -372,5 +452,14 @@ aws-canary remove
 ```
 The related Lambda function and Layer Versions (with name that starts with "cwsyn-") are also cleaned
 
-In order to also remove artifact bucket with canaries run the `remove` command with `--bucket` flag:
-aws-canary remove --bucket --artifact-bucket my-bucket-bucket-name --yes
+In order to also remove artifact and source bucket with canaries run the `remove` command with `--delete-artifact-bucket` or `--delete-source-bucket` flag:
+```bash
+aws-canary remove --delete-artifact-bucket --artifact-bucket my-bucket-bucket-name
+# delete only artifact bucket
+
+aws-canary remove --delete-source-bucket --source-bucket my-source-bucket-name
+# delete only source bucket
+
+aws-canary remove --delete-source-bucket --delete-artifact-bucket --source-bucket my-source-bucket-name --artifact-bucket my-bucket-bucket-name 
+# delete both
+```

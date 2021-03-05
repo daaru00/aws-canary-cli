@@ -45,17 +45,18 @@ func (b *Bucket) IsDeployed() bool {
 func (b *Bucket) Deploy() error {
 
 	// Check if bucket is already deployed
-	if b.IsDeployed() {
-		return nil
+	if b.IsDeployed() == false {
+		// Create new Bucket
+		_, err := b.clients.s3.CreateBucket(&s3.CreateBucketInput{
+			Bucket: b.Name,
+		})
+		if err != nil {
+			return err
+		}
 	}
 
-	// Create new Bucket
-	_, err := b.clients.s3.CreateBucket(&s3.CreateBucketInput{
-		Bucket: b.Name,
-	})
-
-	// Put lock block ACL
-	_, err = b.clients.s3.PutPublicAccessBlock(&s3.PutPublicAccessBlockInput{
+	// Put public ACL lock
+	_, err := b.clients.s3.PutPublicAccessBlock(&s3.PutPublicAccessBlockInput{
 		Bucket: b.Name,
 		PublicAccessBlockConfiguration: &s3.PublicAccessBlockConfiguration{
 			BlockPublicAcls:       aws.Bool(true),

@@ -52,34 +52,37 @@ func Action(c *cli.Context) error {
 
 	// Setup wait group for async jobs
 	var waitGroup sync.WaitGroup
-	waitGroup.Add(len(*canaries))
 
 	// Setup deploy chan error
-	errs := make(chan error)
+	errs := make(chan error, len(*canaries))
 
 	// Loop over found canaries
 	for _, cy := range *canaries {
 
 		// Execute parallel deploy
+		waitGroup.Add(1)
 		go func(canary *canary.Canary) {
+			defer waitGroup.Done()
 			output, err := SingleCanary(ses, canary)
 
 			// Check output flag
 			if c.Bool("output") && len(*output) > 0 {
 				fmt.Println(fmt.Sprintf("[%s] Output: \n%s", canary.Name, *output))
 			}
-			waitGroup.Done()
 
 			errs <- err
-			close(errs)
 		}(cy)
 	}
 
 	// Wait until all remove ends
 	waitGroup.Wait()
 
-	// Check remove error
-	for err := range errs {
+	// Close errors channel
+	close(errs)
+
+	// Check errors
+	for i := 0; i < len(*canaries); i++ {
+		err := <-errs
 		if err != nil {
 			return err
 		}
