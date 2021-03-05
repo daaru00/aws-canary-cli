@@ -106,10 +106,10 @@ code:
   src: ./                 # relative to config file
   exclude:                # path excluded from zip archive
     - ".git/**"
-		- ".gitignore"
-		- ".DS_Store"
-		- "npm-debug.log"
-		- "canary.yml"
+    - ".gitignore"
+    - ".DS_Store"
+    - "npm-debug.log"
+    - "canary.yml"
 ```
 
 ### Interpolation
