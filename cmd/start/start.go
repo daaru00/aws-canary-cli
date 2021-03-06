@@ -72,11 +72,16 @@ func Action(c *cli.Context) error {
 	close(errs)
 
 	// Check errors
+	var inError int
 	for i := 0; i < len(*canaries); i++ {
 		err := <-errs
 		if err != nil {
-			return err
+			inError++
+			fmt.Println(err)
 		}
+	}
+	if inError > 0 {
+		return fmt.Errorf("%d of %d canaries failed", inError, len(*canaries))
 	}
 
 	return nil
@@ -127,10 +132,13 @@ func SingleCanary(canary *canary.Canary) error {
 		}
 	}
 
+	// Wait until last run become available
+	time.Sleep(5 * 1000 * time.Millisecond)
+
 	// Get last run
 	run, err := canary.GetLastRun()
 	if err != nil {
-		return nil
+		return err
 	}
 
 	// Check for run error

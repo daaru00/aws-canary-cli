@@ -72,11 +72,16 @@ func Action(c *cli.Context) error {
 	close(errs)
 
 	// Check errors
+	var inError int
 	for i := 0; i < len(*canaries); i++ {
 		err := <-errs
 		if err != nil {
-			return err
+			inError++
+			fmt.Println(err)
 		}
+	}
+	if inError > 0 {
+		return fmt.Errorf("%d of %d canaries fail stop", inError, len(*canaries))
 	}
 
 	return nil

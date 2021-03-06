@@ -74,7 +74,7 @@ func New(ses *session.Session, name string) *Canary {
 		region:  ses.Config.Region,
 
 		Name:           name,
-		RuntimeVersion: "syn-nodejs-puppeteer-3.0",
+		RuntimeVersion: "syn-nodejs-puppeteer-3.1",
 		Retention: RetentionConfig{
 			FailureRetentionPeriod: 31,
 			SuccessRetentionPeriod: 31,
@@ -253,7 +253,7 @@ func (c *Canary) GetRuns() ([]*synthetics.CanaryRun, error) {
 func (c *Canary) GetLastRun() (*synthetics.CanaryRun, error) {
 	runs, err := c.GetRuns()
 	if len(runs) > 0 {
-		return runs[0], err
+		return runs[0], nil
 	}
 	return nil, err
 }
