@@ -32,9 +32,9 @@ func NewCommand(globalFlags []cli.Flag) *cli.Command {
 				EnvVars: []string{"CANARY_ARTIFACT_BUCKET", "CANARY_ARTIFACT_BUCKET_NAME"},
 			},
 			&cli.StringFlag{
-				Name:    "source-bucket",
+				Name:    "sources-bucket",
 				Usage:   "Then source code bucket name",
-				EnvVars: []string{"CANARY_SOURCE_BUCKET", "CANARY_SOURCE_BUCKET_NAME"},
+				EnvVars: []string{"CANARY_SOURCES_BUCKET", "CANARY_SOURCES_BUCKET_NAME"},
 			},
 			&cli.BoolFlag{
 				Name:    "yes",
@@ -72,18 +72,6 @@ func Action(c *cli.Context) error {
 	// Create AWS session
 	ses := aws.NewAwsSession(c)
 
-	// Get canaries
-	canaries, err := config.LoadCanaries(c, ses)
-	if err != nil {
-		return err
-	}
-
-	// Ask canaries selection
-	canaries, err = config.AskMultipleCanariesSelection(c, *canaries)
-	if err != nil {
-		return err
-	}
-
 	// Get caller infos
 	accountID := aws.GetCallerAccountID(ses)
 	region := aws.GetCallerRegion(ses)
@@ -100,11 +88,27 @@ func Action(c *cli.Context) error {
 	if err != nil {
 		return err
 	}
+	err = artifactBucket.DeployLifecycleConfigurationExpires(90)
+	if err != nil {
+		return err
+	}
+
+	// Get canaries
+	canaries, err := config.LoadCanaries(c, ses)
+	if err != nil {
+		return err
+	}
+
+	// Ask canaries selection
+	canaries, err = config.AskMultipleCanariesSelection(c, *canaries)
+	if err != nil {
+		return err
+	}
 
 	// Deploy source bucket
 	var sourceBucket *bucket.Bucket
 	if c.Bool("upload") {
-		sourceBucketName := c.String("source-bucket")
+		sourceBucketName := c.String("sources-bucket")
 		if len(sourceBucketName) == 0 {
 			sourceBucketName = fmt.Sprintf("cw-syn-sources-%s-%s", *accountID, *region)
 		}
@@ -170,7 +174,7 @@ func Action(c *cli.Context) error {
 func deployBucket(ses *session.Session, bucketName *string) (*bucket.Bucket, error) {
 	fmt.Println(fmt.Sprintf("Checking bucket %s..", *bucketName))
 
-	// Check artifact bucket
+	// Check bucket
 	bucket := bucket.New(ses, bucketName)
 	if bucket.IsDeployed() == false {
 		// Ask for deploy
@@ -184,13 +188,13 @@ func deployBucket(ses *session.Session, bucketName *string) (*bucket.Bucket, err
 		if confirm == false {
 			return nil, fmt.Errorf("Bucket %s not found", *bucketName)
 		}
+	}
 
-		// Deploy artifact bucket
-		fmt.Println(fmt.Sprintf("Deploying bucket %s..", *bucketName))
-		err := bucket.Deploy()
-		if err != nil {
-			return bucket, err
-		}
+	// Deploy bucket
+	fmt.Println(fmt.Sprintf("Deploying bucket %s..", *bucketName))
+	err := bucket.Deploy()
+	if err != nil {
+		return bucket, err
 	}
 
 	return bucket, nil

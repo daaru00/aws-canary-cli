@@ -33,12 +33,12 @@ func NewCommand(globalFlags []cli.Flag) *cli.Command {
 				Usage: "Remove also artifact bucket",
 			},
 			&cli.StringFlag{
-				Name:    "source-bucket",
+				Name:    "sources-bucket",
 				Usage:   "Then source code bucket name",
-				EnvVars: []string{"CANARY_SOURCE_BUCKET", "CANARY_SOURCE_BUCKET_NAME"},
+				EnvVars: []string{"CANARY_SOURCES_BUCKET", "CANARY_SOURCES_BUCKET_NAME"},
 			},
 			&cli.BoolFlag{
-				Name:  "delete-source-bucket",
+				Name:  "delete-sources-bucket",
 				Usage: "Remove also source bucket",
 			},
 			&cli.BoolFlag{
@@ -54,34 +54,10 @@ func NewCommand(globalFlags []cli.Flag) *cli.Command {
 
 // Action contain the command flow
 func Action(c *cli.Context) error {
+	var err error
+
 	// Create AWS session
 	ses := aws.NewAwsSession(c)
-
-	// Get canaries
-	canaries, err := config.LoadCanaries(c, ses)
-	if err != nil {
-		return err
-	}
-
-	// Ask canaries selection
-	canaries, err = config.AskMultipleCanariesSelection(c, *canaries)
-	if err != nil {
-		return err
-	}
-
-	// Ask confirmation
-	if c.Bool("yes") == false {
-		confirm := false
-		prompt := &survey.Confirm{
-			Message: fmt.Sprintf("Are you sure you want to remove %d canaries?", len(*canaries)),
-		}
-		survey.AskOne(prompt, &confirm)
-
-		// Check respose
-		if confirm == false {
-			return errors.New("Not confirmed canaries remove, skip operation")
-		}
-	}
 
 	// Get caller infos
 	accountID := aws.GetCallerAccountID(ses)
@@ -96,6 +72,13 @@ func Action(c *cli.Context) error {
 		if len(artifactBucketName) == 0 {
 			artifactBucketName = fmt.Sprintf("canary-artifact-%s-%s", *accountID, *region)
 		}
+
+		// Ask confirmation
+		err = askConfirmation(c, fmt.Sprintf("Are you sure you want to remove artifact bucket %s?", artifactBucketName))
+		if err != nil {
+			return err
+		}
+
 		err = removeBucket(ses, &artifactBucketName)
 		if err != nil {
 			return err
@@ -103,15 +86,40 @@ func Action(c *cli.Context) error {
 	}
 
 	// Remove source bucket
-	if c.Bool("delete-source-bucket") {
-		sourceBucketName := c.String("source-bucket")
+	if c.Bool("delete-sources-bucket") {
+		sourceBucketName := c.String("sources-bucket")
 		if len(sourceBucketName) == 0 {
 			sourceBucketName = fmt.Sprintf("cw-syn-sources-%s-%s", *accountID, *region)
 		}
+
+		// Ask confirmation
+		err = askConfirmation(c, fmt.Sprintf("Are you sure you want to remove sources bucket %s?", sourceBucketName))
+		if err != nil {
+			return err
+		}
+
 		err = removeBucket(ses, &sourceBucketName)
 		if err != nil {
 			return err
 		}
+	}
+
+	// Get canaries
+	canaries, err := config.LoadCanaries(c, ses)
+	if err != nil {
+		return err
+	}
+
+	// Ask canaries selection
+	canaries, err = config.AskMultipleCanariesSelection(c, *canaries)
+	if err != nil {
+		return err
+	}
+
+	// Ask confirmation
+	err = askConfirmation(c, fmt.Sprintf("Are you sure you want to remove %d canaries?", len(*canaries)))
+	if err != nil {
+		return err
 	}
 
 	// Setup wait group for async jobs
@@ -224,5 +232,26 @@ func removeSingleCanary(ses *session.Session, canary *canary.Canary, region *str
 	}
 
 	fmt.Println(fmt.Sprintf("[%s] Remove completed!", canary.Name))
+	return nil
+}
+
+func askConfirmation(c *cli.Context, message string) error {
+	// Check yes flag
+	if c.Bool("yes") {
+		return nil
+	}
+
+	// Ask confirmation
+	confirm := false
+	prompt := &survey.Confirm{
+		Message: message,
+	}
+	survey.AskOne(prompt, &confirm)
+
+	// Check respose
+	if confirm == false {
+		return errors.New("Not confirmed canaries remove, skip operation")
+	}
+
 	return nil
 }

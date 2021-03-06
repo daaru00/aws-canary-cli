@@ -401,9 +401,9 @@ using `--upload` flag the zip code will be uploaded to the source bucket instead
 aws-canary deploy --upload
 ```
 
-Source bucket name can be customized using `--source-bucket` parameter:
+Source bucket name can be customized using `--sources-bucket` parameter:
 ```bash
-aws-canary deploy --source-bucket my-source-bucket-name --upload
+aws-canary deploy --sources-bucket my-sources-bucket-name --upload
 ```
 
 ## Start canaries (manually execution)
@@ -452,14 +452,14 @@ aws-canary remove
 ```
 The related Lambda function and Layer Versions (with name that starts with "cwsyn-") are also cleaned
 
-In order to also remove artifact and source bucket with canaries run the `remove` command with `--delete-artifact-bucket` or `--delete-source-bucket` flag:
+In order to also remove artifact and source bucket with canaries run the `remove` command with `--delete-artifact-bucket` or `--delete-sources-bucket` flag:
 ```bash
 aws-canary remove --delete-artifact-bucket --artifact-bucket my-bucket-bucket-name
 # delete only artifact bucket
 
-aws-canary remove --delete-source-bucket --source-bucket my-source-bucket-name
+aws-canary remove --delete-sources-bucket --sources-bucket my-sources-bucket-name
 # delete only source bucket
 
-aws-canary remove --delete-source-bucket --delete-artifact-bucket --source-bucket my-source-bucket-name --artifact-bucket my-bucket-bucket-name 
+aws-canary remove --delete-sources-bucket --delete-artifact-bucket --sources-bucket my-sources-bucket-name --artifact-bucket my-bucket-bucket-name 
 # delete both
 ```

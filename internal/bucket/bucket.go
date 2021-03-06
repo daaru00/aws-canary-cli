@@ -69,6 +69,25 @@ func (b *Bucket) Deploy() error {
 	return err
 }
 
+// DeployLifecycleConfigurationExpires deploy lifecycle configuration for expiration
+func (b *Bucket) DeployLifecycleConfigurationExpires(days int64) error {
+	_, err := b.clients.s3.PutBucketLifecycleConfiguration(&s3.PutBucketLifecycleConfigurationInput{
+		Bucket: b.Name,
+		LifecycleConfiguration: &s3.BucketLifecycleConfiguration{
+			Rules: []*s3.LifecycleRule{
+				{
+					Prefix: aws.String(""),
+					Status: aws.String("Enabled"),
+					Expiration: &s3.LifecycleExpiration{
+						Days: aws.Int64(days),
+					},
+				},
+			},
+		},
+	})
+	return err
+}
+
 // Empty Bucket
 func (b *Bucket) Empty() error {
 
