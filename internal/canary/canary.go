@@ -102,6 +102,9 @@ func (c *Canary) GetFlatTags(separator string) *string {
 
 	// Iterate over tags and concatenated them
 	for _, value := range c.Tags {
+		if len(value) == 0 {
+			continue
+		}
 		if len(flat) != 0 {
 			flat += separator
 		}

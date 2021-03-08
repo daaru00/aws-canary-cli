@@ -21,11 +21,6 @@ func NewCommand(globalFlags []cli.Flag) *cli.Command {
 				Aliases: []string{"l"},
 				Usage:   "Automatically select last canary run",
 			},
-			&cli.StringFlag{
-				Name:    "name",
-				Aliases: []string{"n"},
-				Usage:   "Filter canary name",
-			},
 		}...),
 		Action:    Action,
 		ArgsUsage: "[path...]",
