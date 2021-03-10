@@ -124,7 +124,7 @@ func (r *Role) Deploy() error {
 
 	// Do a dummy sleep to avoid IAM role not recognized as valida Lambda role.
 	if needWait {
-		time.Sleep(6 * 1000 * time.Millisecond) // Yes, 6 is a magic number.
+		time.Sleep(10 * 1000 * time.Millisecond) // Yes, 10 is a magic number.
 	}
 
 	return nil
