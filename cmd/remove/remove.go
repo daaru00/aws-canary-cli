@@ -46,6 +46,11 @@ func NewCommand(globalFlags []cli.Flag) *cli.Command {
 				Aliases: []string{"y"},
 				Usage:   "Answer yes for all confirmations",
 			},
+			&cli.BoolFlag{
+				Name:    "all",
+				Aliases: []string{"a"},
+				Usage:   "Select all canaries",
+			},
 		}...),
 		Action:    Action,
 		ArgsUsage: "[path...]",
