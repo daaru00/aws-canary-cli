@@ -286,12 +286,27 @@ func deploySingleCanary(ses *session.Session, region *string, accountID *string,
 		}
 	}
 
+	isAlreadyDeployed := canary.IsDeployed()
+
 	// Deploy canary
-	fmt.Println(fmt.Sprintf("[%s] Deploying..", canary.Name))
+	if !isAlreadyDeployed {
+		fmt.Println(fmt.Sprintf("[%s] Creating..", canary.Name))
+	} else {
+		fmt.Println(fmt.Sprintf("[%s] Updating..", canary.Name))
+	}
 	artifactBucketLocation := *artifactBucket.Location + "/canary/" + canary.Name
 	err = canary.Deploy(role, &artifactBucketLocation)
 	if err != nil {
 		return err
+	}
+
+	// Update tags
+	if isAlreadyDeployed {
+		fmt.Println(fmt.Sprintf("[%s] Updating tags..", canary.Name))
+		err = canary.UpdateTags(region, accountID)
+		if err != nil {
+			return err
+		}
 	}
 
 	// Wait until canary is created

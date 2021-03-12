@@ -11,6 +11,7 @@ import (
 	"github.com/aws/aws-sdk-go/service/lambda"
 	"github.com/aws/aws-sdk-go/service/s3"
 	"github.com/aws/aws-sdk-go/service/s3/s3manager"
+	"github.com/aws/aws-sdk-go/service/sts"
 	"github.com/aws/aws-sdk-go/service/synthetics"
 	"github.com/daaru00/aws-canary-cli/internal/iam"
 )
@@ -20,6 +21,7 @@ type clients struct {
 	s3         *s3.S3
 	s3uploader *s3manager.Uploader
 	lambda     *lambda.Lambda
+	sts        *sts.STS
 }
 
 // Schedule configuration
@@ -67,6 +69,7 @@ func New(ses *session.Session, name string) *Canary {
 		s3:         s3.New(ses),
 		s3uploader: s3manager.NewUploader(ses),
 		lambda:     lambda.New(ses),
+		sts:        sts.New(ses),
 	}
 
 	return &Canary{
@@ -216,6 +219,81 @@ func (c *Canary) Deploy(role *iam.Role, artifactBucketLocation *string) error {
 	}
 
 	return err
+}
+
+// UpdateTags update canary tags
+func (c *Canary) UpdateTags(region *string, account *string) error {
+	// Build ARN
+	arn := fmt.Sprintf("arn:aws:synthetics:%s:%s:canary:%s", *region, *account, c.Name)
+
+	// Get current tags
+	resTags, err := c.clients.synthetics.ListTagsForResource(&synthetics.ListTagsForResourceInput{
+		ResourceArn: &arn,
+	})
+	if err != nil {
+		return err
+	}
+
+	// Skip if not tags are set
+	if len(c.Tags) == 0 && len(resTags.Tags) == 0 {
+		return nil
+	}
+
+	// Check tags to add
+	tagsToAdd := map[string]string{}
+	for key, value := range c.Tags {
+		var foundTagKey *string
+		for currentTagKey, currentTagValue := range resTags.Tags {
+			if key == currentTagKey && value == *currentTagValue {
+				foundTagKey = &key
+				break
+			}
+		}
+
+		if foundTagKey == nil {
+			tagsToAdd[key] = value
+		}
+	}
+
+	// Add missing tags
+	if len(tagsToAdd) > 0 {
+		_, err := c.clients.synthetics.TagResource(&synthetics.TagResourceInput{
+			ResourceArn: &arn,
+			Tags:        aws.StringMap(tagsToAdd),
+		})
+		if err != nil {
+			return err
+		}
+	}
+
+	// Check accounts ids to remove
+	tagsKeysToRemove := []string{}
+	for currentTagKey := range resTags.Tags {
+		var foundTagKey *string
+		for key := range c.Tags {
+			if key == currentTagKey {
+				foundTagKey = &key
+				break
+			}
+		}
+
+		if foundTagKey == nil {
+			tagsKeysToRemove = append(tagsKeysToRemove, currentTagKey)
+		}
+	}
+
+	// Remove unused tags
+	if len(tagsKeysToRemove) > 0 {
+		_, err = c.clients.synthetics.UntagResource(&synthetics.UntagResourceInput{
+			ResourceArn: &arn,
+			TagKeys:     aws.StringSlice(tagsKeysToRemove),
+		})
+		if err != nil {
+			return err
+		}
+	}
+
+	return nil
 }
 
 // Start canary
