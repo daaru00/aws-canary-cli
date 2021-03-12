@@ -113,6 +113,12 @@ func SingleCanary(canary *canary.Canary) error {
 		return err
 	}
 
+	// Stop here if Canary is not manually executed
+	if canary.Schedule.Expression == "rate(0 hour)" || canary.Schedule.Expression == "rate(0 minute)" {
+		fmt.Println(fmt.Sprintf("[%s] Started!", canary.Name))
+		return nil
+	}
+
 	// Wait until canary ends
 	fmt.Println(fmt.Sprintf("[%s] Waiting..", canary.Name))
 	var status *synthetics.CanaryStatus

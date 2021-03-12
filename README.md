@@ -140,7 +140,15 @@ schedule:
 ```
 canary will not start automatically until you manually run it with start command (or adding `--start` to deploy one).
 
-For more information refer to AWS doc about [AWS::Synthetics::Canary Schedule property](https://docs.aws.amazon.com/it_it/AWSCloudFormation/latest/UserGuide/aws-properties-synthetics-canary-schedule.html).
+Using `duration` parameter the Canary will start with interruption for the seconds specified:
+```yaml
+schedule:
+  duration: 300
+  expression: "rate(1 hour)"
+```
+this means that every hours the canary function will run for 5 minutes (one after the other).
+
+For "more" information refer to AWS doc about [AWS::Synthetics::Canary Schedule property](https://docs.aws.amazon.com/it_it/AWSCloudFormation/latest/UserGuide/aws-properties-synthetics-canary-schedule.html).
 
 ### VPC
 
