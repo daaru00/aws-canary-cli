@@ -124,6 +124,24 @@ tags:
   Environment: "${ENV}"
 ```
 
+### Schedule
+
+Schedule configurations for running only manually (when executing start command):
+```yaml
+schedule:
+  duration: 0
+  expression: "rate(0 hour)"
+```
+or with a schedule expression:
+```yaml
+schedule:
+  duration: 0
+  expression: "rate(5 minutes)"
+```
+canary will not start automatically until you manually run it with start command (or adding `--start` to deploy one).
+
+For more information refer to AWS doc about [AWS::Synthetics::Canary Schedule property](https://docs.aws.amazon.com/it_it/AWSCloudFormation/latest/UserGuide/aws-properties-synthetics-canary-schedule.html).
+
 ### VPC
 
 Optionally Canary can run in a VPC:
