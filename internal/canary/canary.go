@@ -77,7 +77,7 @@ func New(ses *session.Session, name string) *Canary {
 		region:  ses.Config.Region,
 
 		Name:           name,
-		RuntimeVersion: "syn-nodejs-puppeteer-3.1",
+		RuntimeVersion: "syn-nodejs-puppeteer-3.9",
 		Retention: RetentionConfig{
 			FailureRetentionPeriod: 31,
 			SuccessRetentionPeriod: 31,
